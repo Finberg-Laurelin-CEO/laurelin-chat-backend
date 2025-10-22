@@ -119,22 +119,41 @@ def send_message(session_id):
         
         # Determine which model to use (A/B testing)
         model_provider = "openai"  # Default
-        if Config.AB_TEST_ENABLED:
-            variant = ab_testing_service.assign_user_to_variant(
-                user.user_id, "model_comparison"
+        use_ab_testing = Config.AB_TEST_ENABLED
+        
+        if use_ab_testing:
+            # Use A/B testing via LLM backend
+            messages = []
+            for msg in session.messages:
+                messages.append({
+                    'role': msg.role.value,
+                    'content': msg.content
+                })
+            
+            # Get AI response via LLM backend with A/B testing
+            response = model_service.generate_response_ab_test(
+                messages, session_id, user.user_id
             )
-            model_provider = variant
-        
-        # Prepare messages for model
-        messages = []
-        for msg in session.messages:
-            messages.append({
-                'role': msg.role.value,
-                'content': msg.content
-            })
-        
-        # Get AI response
-        response = model_service.generate_response(messages, model_provider)
+        else:
+            # Use direct model selection
+            if Config.AB_TEST_ENABLED:
+                variant = ab_testing_service.assign_user_to_variant(
+                    user.user_id, "model_comparison"
+                )
+                model_provider = variant
+            
+            # Prepare messages for model
+            messages = []
+            for msg in session.messages:
+                messages.append({
+                    'role': msg.role.value,
+                    'content': msg.content
+                })
+            
+            # Get AI response
+            response = model_service.generate_response(
+                messages, model_provider, session_id, user.user_id
+            )
         
         if response['success']:
             # Add assistant message to session
