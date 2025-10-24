@@ -5,14 +5,17 @@ from typing import Optional, Dict, Any
 from google.auth.transport import requests
 from google.oauth2 import id_token
 from app.models.user import User, UserService
+from app.models.greenlist import GreenlistService
 
 class AuthService:
     """Authentication service for handling user auth"""
     
     def __init__(self):
         self.user_service = UserService()
+        self.greenlist_service = GreenlistService()
         self.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key')
         self.google_client_id = os.environ.get('GOOGLE_CLIENT_ID')
+        self.greenlist_enabled = os.environ.get('GREENLIST_ENABLED', 'true').lower() == 'true'
     
     def verify_google_token(self, token: str) -> Optional[Dict[str, Any]]:
         """Verify Google ID token and return user info"""
@@ -65,7 +68,17 @@ class AuthService:
         google_user_info = self.verify_google_token(google_token)
         if not google_user_info:
             return None
-        
+
+        # Check greenlist if enabled
+        if self.greenlist_enabled:
+            email = google_user_info['email']
+            if not self.greenlist_service.is_email_allowed(email):
+                print(f"Authentication denied: {email} is not on the greenlist")
+                return {
+                    'error': 'not_authorized',
+                    'message': 'Your email is not authorized to access this application. Please contact support for access.'
+                }
+
         # Get or create user
         user = self.user_service.get_user(google_user_info['user_id'])
         if not user:
@@ -81,10 +94,10 @@ class AuthService:
             self.user_service.update_user(user.user_id, {
                 'last_login': datetime.utcnow()
             })
-        
+
         # Create JWT token
         jwt_token = self.create_jwt_token(user.user_id)
-        
+
         return {
             'user': user.to_dict(),
             'token': jwt_token

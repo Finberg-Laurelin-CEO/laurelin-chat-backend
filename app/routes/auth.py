@@ -17,7 +17,15 @@ def login():
         result = auth_service.authenticate_user(google_token)
         if not result:
             return jsonify({'error': 'Authentication failed'}), 401
-        
+
+        # Check if user is not authorized (greenlist check failed)
+        if 'error' in result and result['error'] == 'not_authorized':
+            return jsonify({
+                'success': False,
+                'error': result['error'],
+                'message': result['message']
+            }), 403
+
         return jsonify({
             'success': True,
             'user': result['user'],
